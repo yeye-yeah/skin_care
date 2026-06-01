@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BeautyPace 护肤打卡</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <img class="brand-mark" src="assets/beautypace-icon.svg" alt="" />
+          <div>
+            <h1>BeautyPace</h1>
+            <p>循步而行，静待焕颜</p>
+          </div>
+        </div>
+
+        <section class="panel streak-panel">
+          <span class="panel-label">连续打卡</span>
+          <strong id="streakCount">0 天</strong>
+          <p id="streakHint">今天还没有记录，给皮肤留一张近照吧。</p>
+        </section>
+
+        <nav class="nav-tabs" aria-label="功能切换">
+          <button class="nav-tab active" type="button" data-view="checkin">今日打卡</button>
+          <button class="nav-tab" type="button" data-view="timeline">记录档案</button>
+          <button class="nav-tab" type="button" data-view="compare">智能对比</button>
+          <button class="nav-tab" type="button" data-view="reminder">打卡提醒</button>
+        </nav>
+      </aside>
+
+      <section class="content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="todayText"></p>
+            <h2 id="viewTitle">今日护肤打卡</h2>
+          </div>
+          <button class="ghost-button" type="button" id="seedButton">载入示例</button>
+        </header>
+
+        <section class="view active" id="checkinView" aria-labelledby="viewTitle">
+          <form class="checkin-grid" id="checkinForm">
+            <label class="photo-uploader" for="photoInput">
+              <input id="photoInput" name="photo" type="file" accept="image/*" />
+              <img id="photoPreview" alt="" />
+              <span class="upload-copy">
+                <strong>上传今日照片</strong>
+                <small>支持手机自拍或局部皮肤照</small>
+              </span>
+            </label>
+
+            <div class="form-panel">
+              <div class="field-row">
+                <label>
+                  日期
+                  <input id="entryDate" name="date" type="date" required />
+                </label>
+                <label>
+                  肌肤状态
+                  <select id="skinState" name="skinState">
+                    <option>稳定透亮</option>
+                    <option>轻微泛红</option>
+                    <option>干燥紧绷</option>
+                    <option>出油明显</option>
+                    <option>痘痘闭口</option>
+                    <option>屏障修护中</option>
+                  </select>
+                </label>
+              </div>
+
+              <label>
+                今日使用产品
+                <input id="products" name="products" type="text" placeholder="例如：氨基酸洁面、神经酰胺面霜、防晒" />
+              </label>
+
+              <label>
+                使用感受与观察
+                <textarea id="notes" name="notes" rows="6" placeholder="记录刺痛、吸收速度、泛红、干燥、痘痘变化等"></textarea>
+              </label>
+
+              <div class="metrics">
+                <label>
+                  水润度
+                  <input id="hydration" name="hydration" type="range" min="1" max="5" value="3" />
+                  <span id="hydrationValue">3 / 5</span>
+                </label>
+                <label>
+                  敏感度
+                  <input id="sensitivity" name="sensitivity" type="range" min="1" max="5" value="2" />
+                  <span id="sensitivityValue">2 / 5</span>
+                </label>
+              </div>
+
+              <button class="primary-button" type="submit">保存打卡</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="view" id="timelineView" aria-labelledby="viewTitle">
+          <div class="timeline-tools">
+            <label>
+              按日期查看
+              <input id="dateFilter" type="date" />
+            </label>
+            <button class="ghost-button" type="button" id="clearFilterButton">查看全部</button>
+          </div>
+          <div class="timeline" id="timelineList"></div>
+        </section>
+
+        <section class="view" id="compareView" aria-labelledby="viewTitle">
+          <div class="compare-controls">
+            <label>
+              对比起点
+              <select id="beforeSelect"></select>
+            </label>
+            <label>
+              对比终点
+              <select id="afterSelect"></select>
+            </label>
+          </div>
+          <div class="compare-stage" id="compareStage">
+            <div class="compare-empty" id="compareEmpty">至少保存两条带照片的记录后，就可以进行前后对比。</div>
+            <div class="compare-image-wrap" id="compareWrap">
+              <img id="beforeImage" alt="对比起点照片" />
+              <div class="after-mask" id="afterMask">
+                <img id="afterImage" alt="对比终点照片" />
+              </div>
+              <input id="compareSlider" type="range" min="0" max="100" value="50" aria-label="拖动查看前后对比" />
+            </div>
+          </div>
+          <div class="compare-notes" id="compareNotes"></div>
+        </section>
+
+        <section class="view" id="reminderView" aria-labelledby="viewTitle">
+          <div class="reminder-card">
+            <div>
+              <span class="panel-label">每日提醒</span>
+              <h3>设置固定打卡时间</h3>
+              <p>提醒会在网页打开期间生效。授权浏览器通知后，到点会提示你记录当日护肤情况。</p>
+            </div>
+            <label>
+              提醒时间
+              <input id="reminderTime" type="time" value="21:30" />
+            </label>
+            <div class="button-row">
+              <button class="primary-button" type="button" id="saveReminderButton">开启提醒</button>
+              <button class="ghost-button" type="button" id="testReminderButton">测试通知</button>
+            </div>
+            <p class="reminder-status" id="reminderStatus"></p>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <template id="entryTemplate">
+      <article class="entry-card">
+        <img class="entry-photo" alt="" />
+        <div class="entry-body">
+          <div class="entry-head">
+            <div>
+              <time></time>
+              <h3></h3>
+            </div>
+            <button class="delete-button" type="button">删除</button>
+          </div>
+          <p class="entry-products"></p>
+          <p class="entry-notes"></p>
+          <div class="score-row"></div>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
