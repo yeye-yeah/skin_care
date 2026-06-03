@@ -15,6 +15,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Runtime data
+data/db.json
+data/*.tmp
+
 # Dependencies
 node_modules/
 

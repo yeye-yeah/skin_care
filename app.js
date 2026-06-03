@@ -1,16 +1,18 @@
-const STORAGE_KEY = "glowlog.entries";
-const REMINDER_KEY = "glowlog.reminder";
-
 const state = {
-  entries: loadEntries(),
+  user: null,
+  entries: [],
+  shares: [],
   currentPhoto: "",
   reminderTimer: null,
+  activeTag: "",
+  authMode: "login",
 };
 
 const views = {
   checkin: document.querySelector("#checkinView"),
   timeline: document.querySelector("#timelineView"),
   compare: document.querySelector("#compareView"),
+  community: document.querySelector("#communityView"),
   reminder: document.querySelector("#reminderView"),
 };
 
@@ -18,10 +20,18 @@ const titles = {
   checkin: "今日护肤打卡",
   timeline: "护肤记录档案",
   compare: "智能前后对比",
+  community: "社区交流平台",
   reminder: "打卡提醒",
 };
 
 const elements = {
+  authScreen: document.querySelector("#authScreen"),
+  appShell: document.querySelector("#appShell"),
+  authForm: document.querySelector("#authForm"),
+  authSubmit: document.querySelector("#authSubmit"),
+  authMessage: document.querySelector("#authMessage"),
+  userPill: document.querySelector("#userPill"),
+  logoutButton: document.querySelector("#logoutButton"),
   todayText: document.querySelector("#todayText"),
   viewTitle: document.querySelector("#viewTitle"),
   checkinForm: document.querySelector("#checkinForm"),
@@ -48,30 +58,40 @@ const elements = {
   streakHint: document.querySelector("#streakHint"),
   reminderTime: document.querySelector("#reminderTime"),
   reminderStatus: document.querySelector("#reminderStatus"),
+  shareForm: document.querySelector("#shareForm"),
+  shareList: document.querySelector("#shareList"),
+  popularTags: document.querySelector("#popularTags"),
+  communitySearch: document.querySelector("#communitySearch"),
+  ageFilter: document.querySelector("#ageFilter"),
+  skinFilter: document.querySelector("#skinFilter"),
+  needFilter: document.querySelector("#needFilter"),
 };
 
 init();
 
-function init() {
-  const today = new Date();
-  elements.todayText.textContent = today.toLocaleDateString("zh-CN", {
+async function init() {
+  bindEvents();
+  elements.todayText.textContent = new Date().toLocaleDateString("zh-CN", {
     year: "numeric",
     month: "long",
     day: "numeric",
     weekday: "long",
   });
-  elements.entryDate.value = toDateInput(today);
-
-  bindEvents();
-  restoreReminder();
-  renderAll();
+  elements.entryDate.value = toDateInput(new Date());
+  updateMetricLabels();
+  await checkSession();
 }
 
 function bindEvents() {
+  document.querySelectorAll("[data-auth-mode]").forEach((button) => {
+    button.addEventListener("click", () => setAuthMode(button.dataset.authMode));
+  });
+  elements.authForm.addEventListener("submit", submitAuth);
+  elements.logoutButton.addEventListener("click", logout);
+
   document.querySelectorAll(".nav-tab").forEach((tab) => {
     tab.addEventListener("click", () => switchView(tab.dataset.view));
   });
-
   elements.photoInput.addEventListener("change", handlePhotoInput);
   elements.checkinForm.addEventListener("submit", saveEntry);
   elements.dateFilter.addEventListener("input", renderTimeline);
@@ -79,18 +99,97 @@ function bindEvents() {
     elements.dateFilter.value = "";
     renderTimeline();
   });
-
   elements.hydration.addEventListener("input", updateMetricLabels);
   elements.sensitivity.addEventListener("input", updateMetricLabels);
   elements.beforeSelect.addEventListener("change", renderCompare);
   elements.afterSelect.addEventListener("change", renderCompare);
-  elements.compareSlider.addEventListener("input", () => {
-    updateCompareClip();
+  elements.compareSlider.addEventListener("input", updateCompareClip);
+
+  elements.shareForm.addEventListener("submit", saveShare);
+  [elements.communitySearch, elements.ageFilter, elements.skinFilter, elements.needFilter].forEach((control) => {
+    control.addEventListener("input", () => {
+      state.activeTag = "";
+      renderCommunity();
+    });
   });
 
   document.querySelector("#saveReminderButton").addEventListener("click", saveReminder);
   document.querySelector("#testReminderButton").addEventListener("click", () => notify("现在可以打卡啦", "记录一下今晚的护肤产品和皮肤状态。"));
-  document.querySelector("#seedButton").addEventListener("click", seedDemoEntries);
+}
+
+async function checkSession() {
+  const data = await api("/api/me");
+  if (data.user) {
+    state.user = data.user;
+    await enterApp();
+  } else {
+    showAuth();
+  }
+}
+
+function setAuthMode(mode) {
+  state.authMode = mode;
+  document.querySelectorAll("[data-auth-mode]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.authMode === mode);
+  });
+  elements.authSubmit.textContent = mode === "login" ? "登录" : "注册并进入";
+  elements.authMessage.textContent = "";
+}
+
+async function submitAuth(event) {
+  event.preventDefault();
+  elements.authMessage.textContent = "";
+  const form = new FormData(elements.authForm);
+  try {
+    const data = await api(`/api/${state.authMode}`, {
+      method: "POST",
+      body: {
+        username: form.get("username"),
+        password: form.get("password"),
+      },
+    });
+    state.user = data.user;
+    elements.authForm.reset();
+    await enterApp();
+  } catch (error) {
+    elements.authMessage.textContent = error.message;
+  }
+}
+
+async function logout() {
+  await api("/api/logout", { method: "POST" });
+  state.user = null;
+  state.entries = [];
+  state.shares = [];
+  clearTimeout(state.reminderTimer);
+  showAuth();
+}
+
+async function enterApp() {
+  elements.authScreen.classList.add("is-hidden");
+  elements.appShell.classList.remove("is-hidden");
+  elements.userPill.textContent = state.user.username;
+  await refreshData();
+}
+
+function showAuth() {
+  elements.appShell.classList.add("is-hidden");
+  elements.authScreen.classList.remove("is-hidden");
+  setAuthMode("login");
+}
+
+async function refreshData() {
+  const [entryData, shareData, reminderData] = await Promise.all([
+    api("/api/entries"),
+    api("/api/shares"),
+    api("/api/reminder"),
+  ]);
+  state.entries = entryData.entries;
+  state.shares = shareData.shares;
+  elements.reminderTime.value = reminderData.time || "21:30";
+  if (reminderData.time) scheduleReminder(reminderData.time);
+  updateReminderStatus(reminderData.time || "");
+  renderAll();
 }
 
 function switchView(name) {
@@ -99,12 +198,17 @@ function switchView(name) {
   elements.viewTitle.textContent = titles[name];
   if (name === "timeline") renderTimeline();
   if (name === "compare") renderCompareOptions();
+  if (name === "community") renderCommunity();
 }
 
 function handlePhotoInput(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-
+  if (file.size > 5 * 1024 * 1024) {
+    alert("图片请控制在 5MB 以内。");
+    elements.photoInput.value = "";
+    return;
+  }
   const reader = new FileReader();
   reader.onload = () => {
     state.currentPhoto = String(reader.result);
@@ -114,39 +218,47 @@ function handlePhotoInput(event) {
   reader.readAsDataURL(file);
 }
 
-function saveEntry(event) {
+async function saveEntry(event) {
   event.preventDefault();
   const form = new FormData(elements.checkinForm);
   const date = form.get("date");
+  const exists = state.entries.some((entry) => entry.date === date);
+  if (exists && !confirm("这一天已有记录，要用当前内容更新它吗？")) return;
 
-  const entry = {
-    id: createId(),
-    date,
-    createdAt: new Date().toISOString(),
-    photo: state.currentPhoto,
-    skinState: form.get("skinState"),
-    products: String(form.get("products") || "").trim(),
-    notes: String(form.get("notes") || "").trim(),
-    hydration: Number(form.get("hydration")),
-    sensitivity: Number(form.get("sensitivity")),
-  };
-
-  const existingIndex = state.entries.findIndex((item) => item.date === date);
-  if (existingIndex >= 0 && confirm("这一天已有记录，要用当前内容更新它吗？")) {
-    entry.id = state.entries[existingIndex].id;
-    entry.photo = entry.photo || state.entries[existingIndex].photo;
-    state.entries.splice(existingIndex, 1, entry);
-  } else if (existingIndex < 0) {
-    state.entries.push(entry);
-  } else {
-    return;
-  }
-
-  state.entries.sort((a, b) => b.date.localeCompare(a.date));
-  persistEntries();
+  await api("/api/entries", {
+    method: "POST",
+    body: {
+      date,
+      photo: state.currentPhoto,
+      skinState: form.get("skinState"),
+      products: form.get("products"),
+      notes: form.get("notes"),
+      hydration: Number(form.get("hydration")),
+      sensitivity: Number(form.get("sensitivity")),
+    },
+  });
+  await refreshData();
   resetForm();
-  renderAll();
   switchView("timeline");
+}
+
+async function saveShare(event) {
+  event.preventDefault();
+  const form = new FormData(elements.shareForm);
+  await api("/api/shares", {
+    method: "POST",
+    body: {
+      title: form.get("title"),
+      body: form.get("body"),
+      age: form.get("age"),
+      skinType: form.get("skinType"),
+      need: form.get("need"),
+      tags: parseTags(form.get("tags")),
+    },
+  });
+  elements.shareForm.reset();
+  await loadShares();
+  renderCommunity();
 }
 
 function resetForm() {
@@ -165,13 +277,13 @@ function renderAll() {
   renderTimeline();
   renderCompareOptions();
   renderStreak();
+  renderCommunity();
 }
 
 function renderTimeline() {
   const filter = elements.dateFilter.value;
   const entries = filter ? state.entries.filter((entry) => entry.date === filter) : state.entries;
   elements.timelineList.innerHTML = "";
-
   if (!entries.length) {
     elements.timelineList.innerHTML = `<div class="empty-state">${filter ? "这一天还没有记录。" : "还没有护肤记录，先完成一次今日打卡吧。"}</div>`;
     return;
@@ -198,15 +310,13 @@ function renderTimeline() {
 
 function renderCompareOptions() {
   const photoEntries = state.entries.filter((entry) => entry.photo);
-  const options = photoEntries.map((entry) => `<option value="${entry.id}">${formatDate(entry.date)} · ${entry.skinState}</option>`).join("");
+  const options = photoEntries.map((entry) => `<option value="${entry.id}">${formatDate(entry.date)} · ${escapeHtml(entry.skinState)}</option>`).join("");
   elements.beforeSelect.innerHTML = options;
   elements.afterSelect.innerHTML = options;
-
   if (photoEntries.length >= 2) {
     elements.beforeSelect.value = photoEntries[photoEntries.length - 1].id;
     elements.afterSelect.value = photoEntries[0].id;
   }
-
   renderCompare();
 }
 
@@ -214,11 +324,9 @@ function renderCompare() {
   const before = state.entries.find((entry) => entry.id === elements.beforeSelect.value);
   const after = state.entries.find((entry) => entry.id === elements.afterSelect.value);
   const canCompare = before?.photo && after?.photo && before.id !== after.id;
-
   elements.compareEmpty.style.display = canCompare ? "none" : "block";
   elements.compareWrap.style.display = canCompare ? "block" : "none";
   elements.compareNotes.innerHTML = "";
-
   if (!canCompare) return;
 
   elements.beforeImage.src = before.photo;
@@ -226,65 +334,146 @@ function renderCompare() {
   elements.compareSlider.value = "50";
   updateCompareClip();
   elements.compareNotes.innerHTML = `
-    <div class="compare-note"><strong>${formatDate(before.date)}</strong><br>${before.skinState}；水润度 ${before.hydration}/5，敏感度 ${before.sensitivity}/5。${before.notes || ""}</div>
-    <div class="compare-note"><strong>${formatDate(after.date)}</strong><br>${after.skinState}；水润度 ${after.hydration}/5，敏感度 ${after.sensitivity}/5。${after.notes || ""}</div>
+    <div class="compare-note"><strong>${formatDate(before.date)}</strong><br>${before.skinState}；水润度 ${before.hydration}/5，敏感度 ${before.sensitivity}/5。${escapeHtml(before.notes || "")}</div>
+    <div class="compare-note"><strong>${formatDate(after.date)}</strong><br>${after.skinState}；水润度 ${after.hydration}/5，敏感度 ${after.sensitivity}/5。${escapeHtml(after.notes || "")}</div>
   `;
 }
 
-function renderStreak() {
-  const dates = new Set(state.entries.map((entry) => entry.date));
-  let streak = 0;
-  const cursor = new Date();
-
-  while (dates.has(toDateInput(cursor))) {
-    streak += 1;
-    cursor.setDate(cursor.getDate() - 1);
+function renderCommunity() {
+  renderPopularTags();
+  const shares = getFilteredShares();
+  elements.shareList.innerHTML = "";
+  if (!shares.length) {
+    elements.shareList.innerHTML = `<div class="empty-state">没有匹配的分享。换个筛选条件，或发布第一条体验吧。</div>`;
+    return;
   }
 
-  const hasToday = dates.has(toDateInput(new Date()));
-  elements.streakCount.textContent = `${streak} 天`;
-  elements.streakHint.textContent = hasToday ? "今天已完成打卡，继续观察皮肤的细微变化。" : "今天还没有记录，给皮肤留一张近照吧。";
+  shares.forEach((share) => {
+    const article = document.createElement("article");
+    article.className = "share-card";
+    article.innerHTML = `
+      <div class="share-meta">
+        <span>${escapeHtml(share.author)}</span>
+        <time>${formatDateTime(share.createdAt)}</time>
+      </div>
+      <h3>${escapeHtml(share.title)}</h3>
+      <p>${escapeHtml(share.body)}</p>
+      <div class="share-taxonomy">
+        <span>${escapeHtml(share.age)}</span>
+        <span>${escapeHtml(share.skinType)}</span>
+        <span>${escapeHtml(share.need)}</span>
+      </div>
+      <div class="tag-row">
+        ${share.tags.map((tag) => `<button type="button" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</button>`).join("")}
+      </div>
+      <div class="share-actions">
+        <button type="button" data-action="like">${share.liked ? "已赞" : "点赞"} · ${share.likes}</button>
+        <button type="button" data-action="collect">${share.collected ? "已收藏" : "收藏"}</button>
+        <button type="button" data-action="comment">评论 · ${share.comments.length}</button>
+      </div>
+      <div class="comment-list">
+        ${share.comments.map((comment) => `<p><strong>${escapeHtml(comment.author)}</strong> ${escapeHtml(comment.text)}</p>`).join("")}
+      </div>
+      <form class="comment-form" data-share-id="${share.id}">
+        <input type="text" name="comment" placeholder="写一条评论" />
+        <button class="ghost-button" type="submit">发送</button>
+      </form>
+    `;
+    article.querySelector('[data-action="like"]').addEventListener("click", () => toggleShareAction(share.id, "like"));
+    article.querySelector('[data-action="collect"]').addEventListener("click", () => toggleShareAction(share.id, "collect"));
+    article.querySelector('[data-action="comment"]').addEventListener("click", () => article.querySelector(".comment-form input").focus());
+    article.querySelectorAll("[data-tag]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.activeTag = button.dataset.tag;
+        elements.communitySearch.value = "";
+        renderCommunity();
+      });
+    });
+    article.querySelector(".comment-form").addEventListener("submit", saveComment);
+    elements.shareList.appendChild(article);
+  });
 }
 
-function deleteEntry(id) {
+function renderPopularTags() {
+  const counts = new Map();
+  state.shares.forEach((share) => share.tags.forEach((tag) => counts.set(tag, (counts.get(tag) || 0) + 1)));
+  const tags = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+  elements.popularTags.innerHTML = tags.map(([tag, count]) => `
+    <button class="${state.activeTag === tag ? "active" : ""}" type="button" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)} ${count}</button>
+  `).join("");
+  elements.popularTags.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeTag = state.activeTag === button.dataset.tag ? "" : button.dataset.tag;
+      renderCommunity();
+    });
+  });
+}
+
+function getFilteredShares() {
+  const keyword = elements.communitySearch.value.trim().toLowerCase();
+  const age = elements.ageFilter.value;
+  const skin = elements.skinFilter.value;
+  const need = elements.needFilter.value;
+  return state.shares.filter((share) => {
+    const text = `${share.title} ${share.body} ${share.tags.join(" ")}`.toLowerCase();
+    return (!keyword || text.includes(keyword))
+      && (!age || share.age === age)
+      && (!skin || share.skinType === skin)
+      && (!need || share.need === need)
+      && (!state.activeTag || share.tags.includes(state.activeTag));
+  });
+}
+
+async function toggleShareAction(id, action) {
+  await api(`/api/shares/${id}/${action}`, { method: "POST" });
+  await loadShares();
+  renderCommunity();
+}
+
+async function saveComment(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const text = form.elements.comment.value.trim();
+  if (!text) return;
+  await api(`/api/shares/${form.dataset.shareId}/comments`, {
+    method: "POST",
+    body: { text },
+  });
+  await loadShares();
+  renderCommunity();
+}
+
+async function loadShares() {
+  const data = await api("/api/shares");
+  state.shares = data.shares;
+}
+
+async function deleteEntry(id) {
   if (!confirm("确定删除这条记录吗？")) return;
-  state.entries = state.entries.filter((entry) => entry.id !== id);
-  persistEntries();
+  await api(`/api/entries/${id}`, { method: "DELETE" });
+  const data = await api("/api/entries");
+  state.entries = data.entries;
   renderAll();
 }
 
 async function saveReminder() {
   const time = elements.reminderTime.value || "21:30";
-  localStorage.setItem(REMINDER_KEY, time);
-
+  await api("/api/reminder", { method: "PUT", body: { time } });
   if ("Notification" in window && Notification.permission === "default") {
     await Notification.requestPermission();
   }
-
-  scheduleReminder(time);
-  updateReminderStatus(time);
-}
-
-function restoreReminder() {
-  const time = localStorage.getItem(REMINDER_KEY);
-  if (!time) {
-    elements.reminderStatus.textContent = "还未开启提醒。";
-    return;
-  }
-
-  elements.reminderTime.value = time;
   scheduleReminder(time);
   updateReminderStatus(time);
 }
 
 function scheduleReminder(time) {
   clearTimeout(state.reminderTimer);
+  if (!time) return;
   const now = new Date();
   const [hours, minutes] = time.split(":").map(Number);
   const target = new Date();
   target.setHours(hours, minutes, 0, 0);
   if (target <= now) target.setDate(target.getDate() + 1);
-
   state.reminderTimer = setTimeout(() => {
     notify("BeautyPace 打卡提醒", "现在记录一下今天的护肤和皮肤状态吧。");
     scheduleReminder(time);
@@ -292,6 +481,10 @@ function scheduleReminder(time) {
 }
 
 function updateReminderStatus(time) {
+  if (!time) {
+    elements.reminderStatus.textContent = "还未设置提醒。";
+    return;
+  }
   const permission = "Notification" in window ? Notification.permission : "unsupported";
   const permissionText = {
     granted: "浏览器通知已授权",
@@ -299,7 +492,36 @@ function updateReminderStatus(time) {
     denied: "浏览器通知被拒绝",
     unsupported: "当前浏览器不支持通知",
   }[permission];
-  elements.reminderStatus.textContent = `已设置每天 ${time} 提醒。${permissionText}。`;
+  elements.reminderStatus.textContent = `已保存每天 ${time} 提醒到账号。${permissionText}。`;
+}
+
+function renderStreak() {
+  const dates = new Set(state.entries.map((entry) => entry.date));
+  let streak = 0;
+  const cursor = new Date();
+  while (dates.has(toDateInput(cursor))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  const hasToday = dates.has(toDateInput(new Date()));
+  elements.streakCount.textContent = `${streak} 天`;
+  elements.streakHint.textContent = hasToday ? "今天已完成打卡，继续观察皮肤的细微变化。" : "今天还没有记录，给皮肤留一张近照吧。";
+}
+
+async function api(url, options = {}) {
+  let response;
+  try {
+    response = await fetch(url, {
+      method: options.method || "GET",
+      headers: options.body ? { "Content-Type": "application/json" } : {},
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+  } catch {
+    throw new Error("无法连接后端服务，请先启动 server.js 后再注册或登录。");
+  }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "请求失败，请稍后再试。");
+  return data;
 }
 
 function notify(title, body) {
@@ -310,74 +532,17 @@ function notify(title, body) {
   }
 }
 
-function seedDemoEntries() {
-  const today = new Date();
-  const day = 24 * 60 * 60 * 1000;
-  const demo = [
-    {
-      offset: 21,
-      skinState: "干燥紧绷",
-      products: "温和洁面、保湿精华、修护面霜",
-      notes: "换季时脸颊偏干，晚间厚涂面霜后紧绷感有缓解。",
-      hydration: 2,
-      sensitivity: 4,
-      color: "#f6d8d1",
-    },
-    {
-      offset: 10,
-      skinState: "屏障修护中",
-      products: "神经酰胺乳液、泛醇精华、防晒",
-      notes: "泛红范围比上周小，鼻翼附近仍有轻微刺痛。",
-      hydration: 3,
-      sensitivity: 3,
-      color: "#dcecf2",
-    },
-    {
-      offset: 0,
-      skinState: "稳定透亮",
-      products: "氨基酸洁面、烟酰胺精华、清爽防晒",
-      notes: "整体状态稳定，额头出油减少，妆前没有明显卡粉。",
-      hydration: 4,
-      sensitivity: 1,
-      color: "#edf5f2",
-    },
-  ];
-
-  state.entries = demo.map((item) => {
-    const date = new Date(today.getTime() - item.offset * day);
-    return {
-      id: createId(),
-      date: toDateInput(date),
-      createdAt: date.toISOString(),
-      photo: makeDemoImage(item.color, item.skinState, toDateInput(date)),
-      skinState: item.skinState,
-      products: item.products,
-      notes: item.notes,
-      hydration: item.hydration,
-      sensitivity: item.sensitivity,
-    };
-  });
-
-  persistEntries();
-  renderAll();
-  switchView("timeline");
-}
-
 function updateMetricLabels() {
   elements.hydrationValue.textContent = `${elements.hydration.value} / 5`;
   elements.sensitivityValue.textContent = `${elements.sensitivity.value} / 5`;
 }
 
-function loadEntries() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function persistEntries() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.entries));
+function parseTags(value) {
+  return String(value || "")
+    .split(/[,，#\s]+/)
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 function formatDate(value) {
@@ -389,14 +554,18 @@ function formatDate(value) {
   });
 }
 
+function formatDateTime(value) {
+  return new Date(value).toLocaleDateString("zh-CN", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function toDateInput(date) {
   const offset = date.getTimezoneOffset() * 60000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 10);
-}
-
-function createId() {
-  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function updateCompareClip() {
@@ -411,29 +580,17 @@ function makePlaceholder(text) {
 function makeDemoImage(color, title, date) {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="960" height="1200" viewBox="0 0 960 1200">
-      <defs>
-        <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0" stop-color="${color}"/>
-          <stop offset="1" stop-color="#ffffff"/>
-        </linearGradient>
-        <filter id="grain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2"/>
-          <feColorMatrix type="saturate" values="0"/>
-          <feComponentTransfer><feFuncA type="table" tableValues="0 0.12"/></feComponentTransfer>
-        </filter>
-      </defs>
-      <rect width="960" height="1200" fill="url(#bg)"/>
-      <rect width="960" height="1200" filter="url(#grain)" opacity="0.22"/>
+      <rect width="960" height="1200" fill="${color}"/>
       <circle cx="490" cy="430" r="250" fill="#f2b9aa" opacity="0.38"/>
       <circle cx="390" cy="390" r="38" fill="#d98975" opacity="0.3"/>
       <circle cx="590" cy="510" r="26" fill="#477264" opacity="0.24"/>
-      <text x="80" y="1040" fill="#254a3f" font-family="Arial, sans-serif" font-size="54" font-weight="700">${escapeSvg(title)}</text>
-      <text x="80" y="1110" fill="#71777f" font-family="Arial, sans-serif" font-size="34">${escapeSvg(date)}</text>
+      <text x="80" y="1040" fill="#254a3f" font-family="Arial, sans-serif" font-size="54" font-weight="700">${escapeHtml(title)}</text>
+      <text x="80" y="1110" fill="#71777f" font-family="Arial, sans-serif" font-size="34">${escapeHtml(date)}</text>
     </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
-function escapeSvg(value) {
+function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
     "<": "&lt;",

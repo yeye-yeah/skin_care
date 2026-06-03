@@ -3,11 +3,43 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BeautyPace 护肤打卡</title>
+    <title>BeautyPace 护肤社区</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="app-shell">
+    <section class="auth-screen" id="authScreen">
+      <div class="auth-card">
+        <div class="brand auth-brand">
+          <img class="brand-mark" src="assets/beautypace-icon.svg" alt="" />
+          <div>
+            <h1>BeautyPace</h1>
+            <p>循步而行，静待焕颜</p>
+          </div>
+        </div>
+        <div class="auth-copy">
+          <h2>登录你的护肤社区</h2>
+          <p>云端同步打卡、照片记录和社区互动，多人共用同一个交流平台。</p>
+        </div>
+        <div class="auth-tabs" role="tablist" aria-label="账号操作">
+          <button class="active" type="button" data-auth-mode="login">登录</button>
+          <button type="button" data-auth-mode="register">注册</button>
+        </div>
+        <form class="auth-form" id="authForm">
+          <label>
+            用户名
+            <input name="username" type="text" autocomplete="username" minlength="2" maxlength="24" required />
+          </label>
+          <label>
+            密码
+            <input name="password" type="password" autocomplete="current-password" minlength="6" required />
+          </label>
+          <button class="primary-button" type="submit" id="authSubmit">登录</button>
+          <p class="form-message" id="authMessage"></p>
+        </form>
+      </div>
+    </section>
+
+    <main class="app-shell is-hidden" id="appShell">
       <aside class="sidebar">
         <div class="brand">
           <img class="brand-mark" src="assets/beautypace-icon.svg" alt="" />
@@ -27,6 +59,7 @@
           <button class="nav-tab active" type="button" data-view="checkin">今日打卡</button>
           <button class="nav-tab" type="button" data-view="timeline">记录档案</button>
           <button class="nav-tab" type="button" data-view="compare">智能对比</button>
+          <button class="nav-tab" type="button" data-view="community">社区交流</button>
           <button class="nav-tab" type="button" data-view="reminder">打卡提醒</button>
         </nav>
       </aside>
@@ -37,7 +70,10 @@
             <p class="eyebrow" id="todayText"></p>
             <h2 id="viewTitle">今日护肤打卡</h2>
           </div>
-          <button class="ghost-button" type="button" id="seedButton">载入示例</button>
+          <div class="account-bar">
+            <span class="user-pill" id="userPill"></span>
+            <button class="ghost-button" type="button" id="logoutButton">退出登录</button>
+          </div>
         </header>
 
         <section class="view active" id="checkinView" aria-labelledby="viewTitle">
@@ -47,7 +83,7 @@
               <img id="photoPreview" alt="" />
               <span class="upload-copy">
                 <strong>上传今日照片</strong>
-                <small>支持手机自拍或局部皮肤照</small>
+                <small>照片会保存到后端，换设备登录也能查看</small>
               </span>
             </label>
 
@@ -69,17 +105,14 @@
                   </select>
                 </label>
               </div>
-
               <label>
                 今日使用产品
                 <input id="products" name="products" type="text" placeholder="例如：氨基酸洁面、神经酰胺面霜、防晒" />
               </label>
-
               <label>
                 使用感受与观察
                 <textarea id="notes" name="notes" rows="6" placeholder="记录刺痛、吸收速度、泛红、干燥、痘痘变化等"></textarea>
               </label>
-
               <div class="metrics">
                 <label>
                   水润度
@@ -92,8 +125,7 @@
                   <span id="sensitivityValue">2 / 5</span>
                 </label>
               </div>
-
-              <button class="primary-button" type="submit">保存打卡</button>
+              <button class="primary-button" type="submit">保存到云端</button>
             </div>
           </form>
         </section>
@@ -133,19 +165,121 @@
           <div class="compare-notes" id="compareNotes"></div>
         </section>
 
+        <section class="view" id="communityView" aria-labelledby="viewTitle">
+          <div class="community-layout">
+            <form class="share-form" id="shareForm">
+              <div>
+                <span class="panel-label">发布分享</span>
+                <h3>写下你的产品体验</h3>
+              </div>
+              <label>
+                标题
+                <input name="title" type="text" maxlength="36" placeholder="例如：屏障修护期的面霜使用感" required />
+              </label>
+              <label>
+                使用体会与效果
+                <textarea name="body" rows="5" placeholder="说说产品搭配、肤感、变化周期、适合或不适合的人群" required></textarea>
+              </label>
+              <div class="field-row">
+                <label>
+                  年龄段
+                  <select name="age">
+                    <option>18-24</option>
+                    <option>25-30</option>
+                    <option>31-40</option>
+                    <option>40+</option>
+                  </select>
+                </label>
+                <label>
+                  肤质类型
+                  <select name="skinType">
+                    <option>干性肌</option>
+                    <option>油性肌</option>
+                    <option>混合肌</option>
+                    <option>敏感肌</option>
+                    <option>中性肌</option>
+                  </select>
+                </label>
+              </div>
+              <div class="field-row">
+                <label>
+                  护肤需求
+                  <select name="need">
+                    <option>保湿补水</option>
+                    <option>屏障修护</option>
+                    <option>控油祛痘</option>
+                    <option>提亮淡印</option>
+                    <option>抗老紧致</option>
+                    <option>舒缓退红</option>
+                  </select>
+                </label>
+                <label>
+                  标签
+                  <input name="tags" type="text" placeholder="精华, 敏感肌, 修护, 不闷痘" />
+                </label>
+              </div>
+              <button class="primary-button" type="submit">发布到社区</button>
+            </form>
+
+            <div class="community-feed">
+              <div class="community-filters">
+                <label>
+                  搜索
+                  <input id="communitySearch" type="search" placeholder="搜索标题、正文或标签" />
+                </label>
+                <label>
+                  年龄段
+                  <select id="ageFilter">
+                    <option value="">全部</option>
+                    <option>18-24</option>
+                    <option>25-30</option>
+                    <option>31-40</option>
+                    <option>40+</option>
+                  </select>
+                </label>
+                <label>
+                  肤质
+                  <select id="skinFilter">
+                    <option value="">全部</option>
+                    <option>干性肌</option>
+                    <option>油性肌</option>
+                    <option>混合肌</option>
+                    <option>敏感肌</option>
+                    <option>中性肌</option>
+                  </select>
+                </label>
+                <label>
+                  需求
+                  <select id="needFilter">
+                    <option value="">全部</option>
+                    <option>保湿补水</option>
+                    <option>屏障修护</option>
+                    <option>控油祛痘</option>
+                    <option>提亮淡印</option>
+                    <option>抗老紧致</option>
+                    <option>舒缓退红</option>
+                  </select>
+                </label>
+              </div>
+              <div class="tag-strip" id="popularTags"></div>
+              <div class="share-list" id="shareList"></div>
+            </div>
+          </div>
+        </section>
+
         <section class="view" id="reminderView" aria-labelledby="viewTitle">
           <div class="reminder-card">
             <div>
               <span class="panel-label">每日提醒</span>
               <h3>设置固定打卡时间</h3>
-              <p>提醒会在网页打开期间生效。授权浏览器通知后，到点会提示你记录当日护肤情况。</p>
+              <p>提醒时间会保存到你的账号。浏览器授权通知后，网页打开期间会按时提醒。</p>
             </div>
             <label>
               提醒时间
               <input id="reminderTime" type="time" value="21:30" />
             </label>
             <div class="button-row">
-              <button class="primary-button" type="button" id="saveReminderButton">开启提醒</button>
+              <button class="primary-button" type="button" id="saveReminderButton">保存提醒</button>
               <button class="ghost-button" type="button" id="testReminderButton">测试通知</button>
             </div>
             <p class="reminder-status" id="reminderStatus"></p>
