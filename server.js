@@ -239,7 +239,7 @@ async function handleApi(req, res, url) {
   if (req.method === "PUT" && pathname === "/api/reminder") {
     const body = await readJson(req);
     const time = String(body.time || "");
-    if (!/^\d{2}:\d{2}$/.test(time)) {
+    if (time && !/^\d{2}:\d{2}$/.test(time)) {
       sendJson(res, 400, { error: "提醒时间格式不正确。" });
       return;
     }

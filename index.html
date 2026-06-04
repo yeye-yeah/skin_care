@@ -60,8 +60,38 @@
           <button class="nav-tab" type="button" data-view="timeline">记录档案</button>
           <button class="nav-tab" type="button" data-view="compare">智能对比</button>
           <button class="nav-tab" type="button" data-view="community">社区交流</button>
+          <button class="nav-tab" type="button" data-view="ritual">护理计时</button>
           <button class="nav-tab" type="button" data-view="reminder">打卡提醒</button>
         </nav>
+
+        <aside class="aroma-widget" id="aromaWidget">
+          <div class="aroma-smoke" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="candle-glass" id="candleGlass" aria-label="玻璃香薰蜡烛">
+            <div class="glass-rim"></div>
+            <div class="wax-pool"></div>
+            <div class="wick" id="candleWick"></div>
+            <div class="aroma-flame" id="aromaFlame"></div>
+          </div>
+          <label>
+            香薰蜡烛
+            <select id="scentSelect">
+              <option value="white-tea">白茶</option>
+              <option value="rose">玫瑰</option>
+              <option value="lavender">薰衣草</option>
+              <option value="cedar">雪松</option>
+            </select>
+          </label>
+          <div class="match-zone" id="matchZone">
+            <button class="match-stick" type="button" id="matchStick" aria-label="移动火柴到烛芯点燃香薰"></button>
+            <span>拖拽火柴到烛芯</span>
+          </div>
+          <button class="ghost-button aroma-off" type="button" id="aromaOffButton">熄灭</button>
+        </aside>
       </aside>
 
       <section class="content">
@@ -267,6 +297,53 @@
           </div>
         </section>
 
+        <section class="view" id="ritualView" aria-labelledby="viewTitle">
+          <div class="ritual-layout">
+            <section class="timer-panel">
+              <div class="timer-hero">
+                <div class="timer-ring" id="timerRing">
+                  <div class="camellia-orbit" id="camelliaOrbit" aria-hidden="true">
+                    <span class="camellia-flower">
+                      <i></i>
+                      <i></i>
+                      <i></i>
+                      <i></i>
+                      <i></i>
+                      <i></i>
+                      <i></i>
+                      <i></i>
+                      <b></b>
+                    </span>
+                  </div>
+                  <span id="timerMinutes">15:00</span>
+                  <small id="timerStepName">面膜护理</small>
+                </div>
+                <div class="timer-actions">
+                  <button class="primary-button" type="button" id="startTimerButton">开始计时</button>
+                  <button class="ghost-button" type="button" id="pauseTimerButton">暂停</button>
+                  <button class="ghost-button" type="button" id="resetTimerButton">重置</button>
+                </div>
+                <div class="duration-control">
+                  <label for="maskDurationInput">面膜时长</label>
+                  <div class="duration-input-row">
+                    <input id="maskDurationInput" type="number" min="1" max="60" step="1" value="15" />
+                    <span>分钟</span>
+                    <button class="ghost-button" type="button" id="applyDurationButton">应用</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="flow-panel">
+              <div>
+                <span class="panel-label">今日护理流程</span>
+                <h3>按步骤慢慢来</h3>
+              </div>
+              <div class="step-list" id="stepList"></div>
+            </section>
+          </div>
+        </section>
+
         <section class="view" id="reminderView" aria-labelledby="viewTitle">
           <div class="reminder-card">
             <div>
@@ -280,7 +357,7 @@
             </label>
             <div class="button-row">
               <button class="primary-button" type="button" id="saveReminderButton">保存提醒</button>
-              <button class="ghost-button" type="button" id="testReminderButton">测试通知</button>
+              <button class="ghost-button" type="button" id="testReminderButton">关闭通知</button>
             </div>
             <p class="reminder-status" id="reminderStatus"></p>
           </div>

@@ -19,6 +19,10 @@ pnpm-debug.log*
 data/db.json
 data/*.tmp
 
+# Generated documents and render checks
+BeautyPace_需求文档.docx
+docx_render_check/
+
 # Dependencies
 node_modules/
 

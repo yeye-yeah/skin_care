@@ -4,6 +4,18 @@ const state = {
   shares: [],
   currentPhoto: "",
   reminderTimer: null,
+  ritualTimer: null,
+  ritualSteps: [
+    { name: "温和清洁", done: false },
+    { name: "爽肤水轻拍", done: false },
+    { name: "面膜护理", done: false },
+    { name: "精华按摩", done: false },
+    { name: "面霜封层", done: false },
+  ],
+  maskMinutes: 15,
+  remainingSeconds: 15 * 60,
+  totalSeconds: 15 * 60,
+  timerRunning: false,
   activeTag: "",
   authMode: "login",
 };
@@ -13,6 +25,7 @@ const views = {
   timeline: document.querySelector("#timelineView"),
   compare: document.querySelector("#compareView"),
   community: document.querySelector("#communityView"),
+  ritual: document.querySelector("#ritualView"),
   reminder: document.querySelector("#reminderView"),
 };
 
@@ -21,6 +34,7 @@ const titles = {
   timeline: "护肤记录档案",
   compare: "智能前后对比",
   community: "社区交流平台",
+  ritual: "护理流程计时",
   reminder: "打卡提醒",
 };
 
@@ -65,6 +79,22 @@ const elements = {
   ageFilter: document.querySelector("#ageFilter"),
   skinFilter: document.querySelector("#skinFilter"),
   needFilter: document.querySelector("#needFilter"),
+  stepList: document.querySelector("#stepList"),
+  timerRing: document.querySelector("#timerRing"),
+  camelliaOrbit: document.querySelector("#camelliaOrbit"),
+  timerMinutes: document.querySelector("#timerMinutes"),
+  timerStepName: document.querySelector("#timerStepName"),
+  startTimerButton: document.querySelector("#startTimerButton"),
+  pauseTimerButton: document.querySelector("#pauseTimerButton"),
+  resetTimerButton: document.querySelector("#resetTimerButton"),
+  maskDurationInput: document.querySelector("#maskDurationInput"),
+  applyDurationButton: document.querySelector("#applyDurationButton"),
+  aromaWidget: document.querySelector("#aromaWidget"),
+  candleWick: document.querySelector("#candleWick"),
+  scentSelect: document.querySelector("#scentSelect"),
+  matchZone: document.querySelector("#matchZone"),
+  matchStick: document.querySelector("#matchStick"),
+  aromaOffButton: document.querySelector("#aromaOffButton"),
 };
 
 init();
@@ -88,10 +118,10 @@ function bindEvents() {
   });
   elements.authForm.addEventListener("submit", submitAuth);
   elements.logoutButton.addEventListener("click", logout);
-
   document.querySelectorAll(".nav-tab").forEach((tab) => {
     tab.addEventListener("click", () => switchView(tab.dataset.view));
   });
+
   elements.photoInput.addEventListener("change", handlePhotoInput);
   elements.checkinForm.addEventListener("submit", saveEntry);
   elements.dateFilter.addEventListener("input", renderTimeline);
@@ -114,7 +144,18 @@ function bindEvents() {
   });
 
   document.querySelector("#saveReminderButton").addEventListener("click", saveReminder);
-  document.querySelector("#testReminderButton").addEventListener("click", () => notify("现在可以打卡啦", "记录一下今晚的护肤产品和皮肤状态。"));
+  document.querySelector("#testReminderButton").addEventListener("click", clearReminder);
+  elements.startTimerButton.addEventListener("click", startRitualTimer);
+  elements.pauseTimerButton.addEventListener("click", pauseRitualTimer);
+  elements.resetTimerButton.addEventListener("click", resetRitualTimer);
+  elements.applyDurationButton.addEventListener("click", applyMaskDuration);
+  elements.maskDurationInput.addEventListener("change", applyMaskDuration);
+  elements.scentSelect.addEventListener("change", updateScent);
+  elements.matchStick.addEventListener("pointerdown", startMatchStrike);
+  document.addEventListener("pointermove", moveMatchStrike);
+  document.addEventListener("pointerup", endMatchStrike);
+  document.addEventListener("pointercancel", endMatchStrike);
+  elements.aromaOffButton.addEventListener("click", extinguishAroma);
 }
 
 async function checkSession() {
@@ -199,6 +240,7 @@ function switchView(name) {
   if (name === "timeline") renderTimeline();
   if (name === "compare") renderCompareOptions();
   if (name === "community") renderCommunity();
+  if (name === "ritual") renderRitual();
 }
 
 function handlePhotoInput(event) {
@@ -278,6 +320,7 @@ function renderAll() {
   renderCompareOptions();
   renderStreak();
   renderCommunity();
+  renderRitual();
 }
 
 function renderTimeline() {
@@ -334,8 +377,8 @@ function renderCompare() {
   elements.compareSlider.value = "50";
   updateCompareClip();
   elements.compareNotes.innerHTML = `
-    <div class="compare-note"><strong>${formatDate(before.date)}</strong><br>${before.skinState}；水润度 ${before.hydration}/5，敏感度 ${before.sensitivity}/5。${escapeHtml(before.notes || "")}</div>
-    <div class="compare-note"><strong>${formatDate(after.date)}</strong><br>${after.skinState}；水润度 ${after.hydration}/5，敏感度 ${after.sensitivity}/5。${escapeHtml(after.notes || "")}</div>
+    <div class="compare-note"><strong>${formatDate(before.date)}</strong><br>${escapeHtml(before.skinState)}；水润度 ${before.hydration}/5，敏感度 ${before.sensitivity}/5。${escapeHtml(before.notes || "")}</div>
+    <div class="compare-note"><strong>${formatDate(after.date)}</strong><br>${escapeHtml(after.skinState)}；水润度 ${after.hydration}/5，敏感度 ${after.sensitivity}/5。${escapeHtml(after.notes || "")}</div>
   `;
 }
 
@@ -466,6 +509,13 @@ async function saveReminder() {
   updateReminderStatus(time);
 }
 
+async function clearReminder() {
+  await api("/api/reminder", { method: "PUT", body: { time: "" } });
+  clearTimeout(state.reminderTimer);
+  elements.reminderTime.value = "21:30";
+  updateReminderStatus("");
+}
+
 function scheduleReminder(time) {
   clearTimeout(state.reminderTimer);
   if (!time) return;
@@ -495,6 +545,127 @@ function updateReminderStatus(time) {
   elements.reminderStatus.textContent = `已保存每天 ${time} 提醒到账号。${permissionText}。`;
 }
 
+function renderRitual() {
+  const progress = state.totalSeconds ? 1 - state.remainingSeconds / state.totalSeconds : 0;
+  const progressAngle = Math.round(progress * 360);
+  const midProgressAngle = Math.round(progress * 220);
+  elements.timerStepName.textContent = "面膜护理";
+  elements.timerMinutes.textContent = formatTimer(state.remainingSeconds);
+  elements.timerRing.style.setProperty("--timer-progress", `${progressAngle}deg`);
+  elements.timerRing.style.setProperty("--timer-progress-mid", `${midProgressAngle}deg`);
+  elements.timerRing.style.setProperty("--flower-angle", `${progressAngle}deg`);
+  elements.timerRing.style.setProperty("--flower-counter-angle", `${-progressAngle}deg`);
+  elements.timerRing.classList.toggle("is-running", state.timerRunning);
+  if (document.activeElement !== elements.maskDurationInput) {
+    elements.maskDurationInput.value = state.maskMinutes;
+  }
+  elements.startTimerButton.textContent = state.timerRunning ? "计时中" : "开始计时";
+  elements.startTimerButton.disabled = false;
+  elements.pauseTimerButton.disabled = false;
+  elements.resetTimerButton.disabled = false;
+
+  elements.stepList.innerHTML = state.ritualSteps.map((step, index) => `
+    <div class="step-item ${step.name.includes("面膜") ? "active" : ""} ${step.done ? "done" : ""}">
+      <span>${index + 1}</span>
+      <strong>${escapeHtml(step.name)}</strong>
+    </div>
+  `).join("");
+}
+
+function loadCurrentStepTime() {
+  state.totalSeconds = state.maskMinutes * 60;
+  state.remainingSeconds = state.totalSeconds;
+}
+
+function startRitualTimer() {
+  if (state.timerRunning) return;
+  state.timerRunning = true;
+  elements.startTimerButton.textContent = "计时中";
+  state.ritualTimer = setInterval(() => {
+    state.remainingSeconds -= 1;
+    if (state.remainingSeconds <= 0) finishRitualStep();
+    renderRitual();
+  }, 1000);
+}
+
+function pauseRitualTimer() {
+  state.timerRunning = false;
+  clearInterval(state.ritualTimer);
+  renderRitual();
+}
+
+function resetRitualTimer() {
+  pauseRitualTimer();
+  loadCurrentStepTime();
+  renderRitual();
+}
+
+function applyMaskDuration() {
+  const minutes = Math.min(60, Math.max(1, Number.parseInt(elements.maskDurationInput.value, 10) || 15));
+  state.maskMinutes = minutes;
+  elements.maskDurationInput.value = minutes;
+  resetRitualTimer();
+}
+
+function finishRitualStep() {
+  const maskStep = state.ritualSteps.find((step) => step.name.includes("面膜"));
+  if (maskStep) maskStep.done = true;
+  pauseRitualTimer();
+  notify("面膜时间到啦", "可以取下面膜，继续后续护肤步骤。");
+  loadCurrentStepTime();
+  renderRitual();
+}
+
+function formatTimer(seconds) {
+  const safeSeconds = Math.max(0, seconds);
+  const minutes = Math.floor(safeSeconds / 60);
+  const rest = safeSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
+}
+
+function updateScent() {
+  elements.aromaWidget.dataset.scent = elements.scentSelect.value;
+}
+
+function startMatchStrike(event) {
+  event.preventDefault();
+  document.body.appendChild(elements.matchStick);
+  elements.matchStick.classList.add("striking");
+  moveMatchStrike(event);
+}
+
+function moveMatchStrike(event) {
+  if (!elements.matchStick.classList.contains("striking")) return;
+  const x = event.clientX;
+  const y = event.clientY;
+  elements.matchStick.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%) rotate(-18deg)`;
+
+  const wickRect = elements.candleWick.getBoundingClientRect();
+  const headX = x + 40;
+  const headY = y - 2;
+  const closeToWick = headX > wickRect.left - 16
+    && headX < wickRect.right + 18
+    && headY > wickRect.top - 22
+    && headY < wickRect.bottom + 18;
+  if (closeToWick) lightAroma();
+}
+
+function endMatchStrike() {
+  if (!elements.matchStick.classList.contains("striking")) return;
+  elements.matchStick.classList.remove("striking");
+  elements.matchStick.style.transform = "";
+  elements.matchZone.prepend(elements.matchStick);
+}
+
+function lightAroma() {
+  updateScent();
+  elements.aromaWidget.classList.add("lit");
+}
+
+function extinguishAroma() {
+  elements.aromaWidget.classList.remove("lit");
+}
+
 function renderStreak() {
   const dates = new Set(state.entries.map((entry) => entry.date));
   let streak = 0;
@@ -517,7 +688,7 @@ async function api(url, options = {}) {
       body: options.body ? JSON.stringify(options.body) : undefined,
     });
   } catch {
-    throw new Error("无法连接后端服务，请先启动 server.js 后再注册或登录。");
+    throw new Error("无法连接后端服务，请通过 http://localhost:3000/ 访问，并确认 server.js 正在运行。");
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "请求失败，请稍后再试。");
